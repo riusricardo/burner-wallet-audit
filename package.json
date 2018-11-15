@@ -1,0 +1,28 @@
+{
+  "name": "burner-wallet-audit",
+  "version": "1.0.0",
+  "description": "Burner Wallet smart contract audit.",
+  "main": "README.md",
+  "directories": {
+    "test": "test"
+  },
+  "scripts": {
+    "test": "truffle test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/riusricardo/burner-wallet-audit.git"
+  },
+  "keywords": [
+    "Ethereum",
+    "Burner",
+    "Wallet",
+    "Security"
+  ],
+  "author": "Ricardo Rius",
+  "license": "Apache-2.0",
+  "bugs": {
+    "url": "https://github.com/riusricardo/burner-wallet-audit/issues"
+  },
+  "homepage": "https://github.com/riusricardo/burner-wallet-audit#readme"
+}
