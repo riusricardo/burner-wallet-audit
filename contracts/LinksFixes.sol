@@ -33,7 +33,7 @@ contract LinksFixes {
     /// @dev Create fund.
     /// @param _id Fund lookup key value.
     /// @param _sig Claimant signature.
-    function send(
+    function createFund(
         bytes32 _id, 
         bytes _sig
     )   
@@ -71,7 +71,7 @@ contract LinksFixes {
     /// @param _id Claim lookup key value.
     /// @param _sig Claimant signature.
     /// @param _destination Destination address.
-    function claim(
+    function claimFund(
         bytes32 _id, 
         bytes _sig, 
         address _destination

@@ -13,8 +13,11 @@ contract LinksOriginal {
         uint64 expires;
     }
     mapping (bytes32 => Fund) public funds;
-
-    function send(bytes32 id, bytes sig) public payable returns(bool result){
+    /*
+    * TESTING NOTE: renamed funtion send -> createFund 
+    * Truffle instance overlap on send function name
+    */
+    function createFund(bytes32 id, bytes sig) public payable returns(bool result){
       //make sure there isnt already a fund here
         require(funds[id].sender==address(0),"Links::send id already exists");
         //create hardcoded expires time for now
@@ -31,8 +34,11 @@ contract LinksOriginal {
         return true;
     }
     event Send(bytes32 id,address indexed sender, uint256 value, uint64 expires);
-
-    function claim(bytes32 id, bytes sig, address destination) public returns(bool result){
+    /*
+    * TESTING NOTE: renamed funtion claim -> claimFund 
+    * Renamed for clarity
+    */
+    function claimFund(bytes32 id, bytes sig, address destination) public returns(bool result){
         //makes sure sig is correct
         //make sure there is fund here
         //make sure it hasn't expired
