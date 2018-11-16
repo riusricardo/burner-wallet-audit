@@ -6,7 +6,7 @@ contract LinksFixes {
         address sender;
         address signer;
         uint256 value;
-        uint64 expires;
+        uint256 expires;
         uint256 nonce;
         bool claimed;
     }
@@ -17,8 +17,9 @@ contract LinksFixes {
         bytes32 id,
         address indexed sender,
         uint256 value,
-        uint64 expires,
-        uint256 nonce
+        uint256 expires,
+        uint256 nonce,
+        bool indexed sent
     );
     event Claim(
         bytes32 id,
@@ -26,19 +27,27 @@ contract LinksFixes {
         uint256 value, 
         address indexed receiver, 
         uint256 nonce, 
-        bool claimed
+        bool indexed claimed
     );
 
     /// @dev Create fund.
     /// @param _id Fund lookup key value.
     /// @param _sig Claimant signature.
-    function send(bytes32 _id, bytes _sig) public payable returns(bool result){
+    function send(
+        bytes32 _id, 
+        bytes _sig
+    )   
+        public 
+        payable 
+        returns (bool)
+    {
         require(msg.value > 0,"Links::some value needs to be allocated");
         require(_sig.length == 65,"Links::invalid signature lenght");
-        //make sure there isnt already a fund here
+        //make sure there is not already a fund here
         require(!fundExists(_id),"Links::send id already exists");
         //create hardcoded expires time for now
-        uint64 expires = uint64(block.number + 100);//expires in 100 blocks (~25 mins)
+        //expires in 9,000 blocks (~30 min) in xDai PoA 5 sec blocks.
+        uint256 expires = safeAdd(block.number,uint256(9000));
         address signer = recoverSigner(_id,_sig);
         //recoverSigner returns: address(0) if invalid signature or incorrect version.
         require(signer != address(0),"Links::invalid signer");
@@ -54,7 +63,7 @@ contract LinksFixes {
             claimed: false
         });
         //send out events for frontend parsing
-        emit Send(_id,msg.sender,msg.value,expires,nonce);
+        emit Send(_id,msg.sender,msg.value,expires,nonce,true);
         return true;
     }
 
@@ -62,28 +71,45 @@ contract LinksFixes {
     /// @param _id Claim lookup key value.
     /// @param _sig Claimant signature.
     /// @param _destination Destination address.
-    function claim(bytes32 _id, bytes _sig, address _destination) public returns(bool result){
-        //makes sure sig is correct
-        //make sure there is fund here
-        //make sure it hasn't expired
+    function claim(
+        bytes32 _id, 
+        bytes _sig, 
+        address _destination
+    ) 
+        public 
+        returns (bool)
+    {
+        //makes sure sig is correct, there is fund here and it has not expired
         require(isClaimValid(_id,_sig,_destination),"Links::claim is not valid");
-        result = executeClaim(_id,_destination);
+        return executeClaim(_id,_destination);
     }
   
     /// @dev Off chain relayer can validate the claim before submitting.
     /// @param _id Claim lookup key value.
     /// @param _sig Claimant signature.
     /// @param _destination Destination address.
-    function isClaimValid(bytes32 _id, bytes _sig, address _destination) public view returns(bool){
+    function isClaimValid(
+        bytes32 _id, 
+        bytes _sig, 
+        address _destination
+    ) 
+        public 
+        view 
+        returns (bool)
+    {
+        // address(0) destination is valid
         if(fundExists(_id) && _sig.length == 65){
             uint256 nonce = funds[_id].nonce;
-            address signer = recoverSigner(keccak256(abi.encodePacked(_destination,nonce,address(this))),_sig);
+            // keccak256(_id,_destination,nonce,address(this)) is a unique key
+            // remains unique if the id gets reused after fund deletion
+            bytes32 claimHash = keccak256(abi.encodePacked(_id,_destination,nonce,address(this)));
+            address signer = recoverSigner(claimHash,_sig);
             if(signer != address(0)){
                 return(
                     funds[_id].signer == signer && 
                     funds[_id].claimed == false &&
                     funds[_id].nonce < contractNonce &&
-                    funds[_id].expires >= uint64(block.number)
+                    funds[_id].expires >= block.number
                 );
             }else{
                 return false;
@@ -95,15 +121,21 @@ contract LinksFixes {
 
     /// @dev Validate fund status. 
     /// @param _id Lookup key value.
-    function fundExists(bytes32 _id) public view returns (bool){
+    function fundExists(
+        bytes32 _id
+    ) 
+        public 
+        view 
+        returns (bool)
+    {
         address sender = funds[_id].sender;
         address signer = funds[_id].signer;
         uint256 amount = funds[_id].value;
         uint256 nonce = funds[_id].nonce;
-        uint64 expiration = funds[_id].expires;
+        uint256 expiration = funds[_id].expires;
         /* solium-disable-next-line security/no-inline-assembly */
         assembly {
-          // Cannot assume empty initial values without initialization. 
+          // Cannot assume empty initial values without initializating them. 
           sender := and(sender, 0xffffffff)
           signer := and(signer, 0xffffffff)
           amount := and(amount, 0xffffffff)
@@ -115,31 +147,41 @@ contract LinksFixes {
           signer != address(0) && 
           amount != uint256(0) && 
           nonce != uint256(0) &&
-          expiration != uint64(0)
+          expiration != uint256(0)
         );
     }
 
     /// @dev Claim fund value.
     /// @param _id Claim lookup key value.
     /// @param _destination Destination address.
-    function executeClaim(bytes32 _id,address _destination) internal returns(bool){
-        //save value in temp so we can destory before sending
+    function executeClaim(
+        bytes32 _id,
+        address _destination
+    ) 
+        internal 
+        returns (bool)
+    {
+        require(fundExists(_id),"Links::fund id does not exists");
         bool status = false;
         bool claimed = funds[_id].claimed;
         address sender = funds[_id].sender;
         uint256 value = funds[_id].value;
         uint256 nonce = funds[_id].nonce;
-        if((!claimed) && (nonce < contractNonce)){
-            //send funds to the destination (receiver)
+        if((claimed == false) && (nonce < contractNonce)){
+            // set id control flag to prevent reentrancy
+            // temporary fund invalidation
+            funds[_id].claimed = true;
+            // send funds to the destination (receiver)
             /* solium-disable-next-line security/no-send */
             status = _destination.send(value);
-        }
-        funds[_id].claimed = status;
-        if(status == true){
-            //DESTROY object so it can't be claimed again
+            // update fund with correct status
+            funds[_id].claimed = status;
+        } 
+        if(status == true || claimed == true){
+            // DESTROY object so it can't be claimed again
             delete funds[_id];
         }
-        //send out events for frontend parsing
+        // send out events for frontend parsing
         emit Claim(_id,sender,value,_destination,nonce,status);
         return status;
     }
@@ -147,7 +189,14 @@ contract LinksFixes {
     /// @dev Recover signer from bytes32 data.
     /// @param _hash bytes32 data.
     /// @param _signature message signature (65 bytes).
-    function recoverSigner(bytes32 _hash, bytes _signature) internal pure returns (address){
+    function recoverSigner(
+        bytes32 _hash, 
+        bytes _signature
+    ) 
+        internal 
+        pure 
+        returns (address)
+    {
         bytes32 r;
         bytes32 s;
         uint8 v;
@@ -180,7 +229,14 @@ contract LinksFixes {
     }
 
     /// @dev Adds two numbers, throws on overflow.
-    function safeAdd(uint256 _a, uint256 _b) internal pure returns (uint256 c) {
+    function safeAdd(
+        uint256 _a, 
+        uint256 _b
+    ) 
+        internal 
+        pure 
+        returns (uint256 c) 
+    {
         c = _a + _b;
         assert(c >= _a);
         return c;
