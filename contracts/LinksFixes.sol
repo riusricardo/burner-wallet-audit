@@ -6,7 +6,7 @@ contract LinksFixes {
         address sender;
         address signer;
         uint256 value;
-        uint256 expires;
+        uint64 expires;
         uint256 nonce;
         bool claimed;
     }
@@ -17,7 +17,7 @@ contract LinksFixes {
         bytes32 id,
         address indexed sender,
         uint256 value,
-        uint256 expires,
+        uint64 expires,
         uint256 nonce,
         bool indexed sent
     );
@@ -46,8 +46,7 @@ contract LinksFixes {
         //make sure there is not already a fund here
         require(!fundExists(_id),"Links::send id already exists");
         //create hardcoded expires time for now
-        //expires in 9,000 blocks (~30 min) in xDai PoA 5 sec blocks.
-        uint256 expires = safeAdd(block.number,uint256(9000));
+        uint64 expires = uint64(block.number+10);//expires in 100 blocks
         address signer = recoverSigner(_id,_sig);
         //recoverSigner returns: address(0) if invalid signature or incorrect version.
         require(signer != address(0),"Links::invalid signer");
@@ -109,7 +108,7 @@ contract LinksFixes {
                     funds[_id].signer == signer && 
                     funds[_id].claimed == false &&
                     funds[_id].nonce < contractNonce &&
-                    funds[_id].expires >= block.number
+                    funds[_id].expires >= uint64(block.number)
                 );
             }else{
                 return false;
@@ -132,7 +131,7 @@ contract LinksFixes {
         address signer = funds[_id].signer;
         uint256 amount = funds[_id].value;
         uint256 nonce = funds[_id].nonce;
-        uint256 expiration = funds[_id].expires;
+        uint64 expiration = funds[_id].expires;
         /* solium-disable-next-line security/no-inline-assembly */
         assembly {
           // Cannot assume empty initial values without initializating them. 
@@ -147,7 +146,7 @@ contract LinksFixes {
           signer != address(0) && 
           amount != uint256(0) && 
           nonce != uint256(0) &&
-          expiration != uint256(0)
+          expiration != uint64(0)
         );
     }
 
@@ -164,7 +163,6 @@ contract LinksFixes {
         require(fundExists(_id),"Links::fund id does not exists");
         bool status = false;
         bool claimed = funds[_id].claimed;
-        address sender = funds[_id].sender;
         uint256 value = funds[_id].value;
         uint256 nonce = funds[_id].nonce;
         if((claimed == false) && (nonce < contractNonce)){
@@ -182,7 +180,7 @@ contract LinksFixes {
             delete funds[_id];
         }
         // send out events for frontend parsing
-        emit Claim(_id,sender,value,_destination,nonce,status);
+        emit Claim(_id,msg.sender,value,_destination,nonce,status);
         return status;
     }
 
