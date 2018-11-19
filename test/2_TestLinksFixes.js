@@ -14,7 +14,6 @@ contract('LinksFixes', function(accounts) {
   const value = 0.2*10**18;
   const user1 = accounts[0];
   const user2 = accounts[1];
-  const user3 = accounts[2];
   const badBoy = accounts[4];
   const signer1 = web3_1.eth.accounts.create(web3_1.utils.randomHex(32));
   const claimId1 = web3_1.utils.randomHex(32);
@@ -37,17 +36,21 @@ contract('LinksFixes', function(accounts) {
       assert.equal(tx.logs[0].event, 'Send')
     })
     it('should emit correct sent values', () => {
-      assert.equal(tx.logs[0].args.id, claimId1)
-      assert.equal(tx.logs[0].args.sender, user1)
-      assert.equal(tx.logs[0].args.value, value)
-      assert.equal(tx.logs[0].args.expires, block + 10)
+      assert.equal(tx.logs[0].args.id, claimId1) // fund id
+      assert.equal(tx.logs[0].args.sender, user1) // sender
+      assert.equal(tx.logs[0].args.value, value) // value
+      assert.equal(tx.logs[0].args.expires, block + 10) // expires
+      assert.equal(tx.logs[0].args.nonce, 1) // nonce
+      assert.equal(tx.logs[0].args.sent, true) // sent
     })
     it('should create fund with correct parameters',async () => {
       const fund = await instance.funds(claimId1,{from: user1})
       assert.equal(fund[0], user1) // msg.sender
       assert.equal(fund[1], signer1.address.toLowerCase()) // signer
       assert.equal(fund[2], value) // value
-      assert.equal(fund[3], block + 10) // expires = 14
+      assert.equal(fund[3], block + 10) // expires
+      assert.equal(fund[4], 1) // nonce
+      assert.equal(fund[5], false) // claimed/status
     })
   })
 
@@ -56,10 +59,10 @@ contract('LinksFixes', function(accounts) {
     before(async () => {
         destination = accounts[9] // User2 destination address
         message = web3_1.utils.soliditySha3(
-          {type: 'uint256', value: claimId1},
-          {type: 'address', value: destination},
-          {type: 'uint256', value: 1},
-          {type: 'address', value: LinksFixes.address}
+          {type: 'uint256', value: claimId1}, // fund id
+          {type: 'address', value: destination}, // destination address
+          {type: 'uint256', value: 1}, // nonce
+          {type: 'address', value: LinksFixes.address} // contract address
         )
         signedMessage = web3_1.eth.accounts.sign(message, signer1.privateKey)
         signature = signedMessage.signature
@@ -85,6 +88,134 @@ contract('LinksFixes', function(accounts) {
       finalBalance = await web3_1.eth.getBalance(destination)
       const balance = web3_1.utils.toBN(initialBalance).add(web3_1.utils.toBN(value))
       assert.equal(balance, finalBalance)
+    })
+  })
+
+  describe('3) Create new fund. signer1 -> user3.', () => {
+    let tx,signedMessage,signature
+    before(async () => {
+        // Create new fund (claimId2) for another user.
+        signedMessage = web3_1.eth.accounts.sign(claimId2, signer1.privateKey)
+        signature = signedMessage.signature
+        tx = await instance.createFund(claimId2,signature,{from: user1, value:value})
+        block = await web3_1.eth.getBlockNumber()
+    })
+    it('should emit Send event', () => {
+      assert.equal(tx.logs[0].event, 'Send')
+    })
+    it('should emit correct sent values', () => {
+      assert.equal(tx.logs[0].args.id, claimId2) // fund id
+      assert.equal(tx.logs[0].args.sender, user1) // sender
+      assert.equal(tx.logs[0].args.value, value) // value
+      assert.equal(tx.logs[0].args.expires, block + 10) // expires
+      assert.equal(tx.logs[0].args.nonce, 2) // nonce
+      assert.equal(tx.logs[0].args.sent, true) // sent
+    })
+    it('should create fund with correct parameters',async () => {
+      const fund = await instance.funds(claimId2,{from: user1})
+      assert.equal(fund[0], user1) // msg.sender
+      assert.equal(fund[1], signer1.address.toLowerCase()) // signer
+      assert.equal(fund[2], value) // value
+      assert.equal(fund[3], block + 10) // expires
+      assert.equal(fund[4], 2) // nonce
+      assert.equal(fund[5], false) // claimed/status
+    })
+  })
+
+  describe('4) Replay attack from user2 stealing user3 funds.', () => {
+    let tx,destination,initialBalance,finalBalance
+    before(async () => {
+        destination = accounts[9] // attacker destination address [user2]
+        // Use signature from 2)[attackSig] to steal funds from 3)
+        initialBalance = await web3_1.eth.getBalance(destination)
+    })
+    // key = keccak256(claimId,destination,nonce,contract address)
+    it('should FAIL to claim fund with incorrect key parameters.', async () => {
+      try {
+        tx = await instance.claimFund(claimId2,attackSig,destination,{from: user2})
+      } catch (error) {
+          assert.equal(error.message, 'VM Exception while processing transaction: revert Links::claim is not valid')
+      }
+    })
+    it('should NOT emit Claim event', () => {
+      assert.equal(tx, undefined)
+    })
+    it('should NOT emit correct claimed values', () => {
+      assert.equal(tx, undefined)
+    })
+    it('should NOT be a new fund',async () => {
+      const fund = await instance.funds(claimId2,{from: user2})
+      assert.equal(fund[0], user1) // sender != address(0)
+      const exists = await instance.fundExists(claimId2,{from: user2})
+      assert.equal(exists, true)
+    })
+    it('should NOT increase destination balance.',async () => {
+      finalBalance = await web3_1.eth.getBalance(destination)
+      assert.equal(initialBalance, finalBalance)
+    })
+  })
+
+  describe('5) Create faulty fund. signerN -> user4.', () => {
+    let tx, fakeSig
+    before(async () => {
+        // Create new fund for another user.
+        // Incorrect signature size or version creates signer 0x0
+        fakeSig = web3_1.utils.randomHex(66) // sig should be 65 bytes
+
+        // create a correct signature to test address(0)
+    })
+    it('should FAIL to claim fund with incorrect signature lenght or version.', async () => {
+      try {
+        tx = await instance.createFund(faultyId,fakeSig,{from: user2, value:value})
+      } catch (error) {
+          assert.equal(error.message, 'VM Exception while processing transaction: revert Links::invalid signature lenght')
+      }
+    })
+    it('should NOT emit Send event', () => {
+      assert.equal(tx, undefined)
+    })
+    it('should NOT emit faulty sent values', () => {
+      assert.equal(tx, undefined)
+    })
+    it('should NOT create fund with faulty parameters',async () => {
+      const fund = await instance.funds(faultyId,{from: user2})
+      assert.equal(fund[0], 0) // sender == address(0)
+      const exists = await instance.fundExists(faultyId,{from: user2})
+      assert.equal(exists, false)
+    })
+  })
+
+  describe('6) Incorrect signature attack from badBoy stealing user4 funds.', () => {
+    let tx,destination,initialBalance,finalBalance,fakeSig2
+    before(async () => {
+        destination = accounts[8] // attacker destination address [badBoy]
+        // Use new random fake signature to steal funds from 5)
+        fakeSig2 = web3_1.utils.randomHex(66) // sig should be 65 bytes
+        initialBalance = await web3_1.eth.getBalance(destination)
+    })
+    // key = keccak256(claimId,destination,nonce,contract address)
+    it('should FAIL to claim fund with incorrect key/sig parameters.', async () => {
+      try {
+        tx = await instance.claimFund(faultyId,fakeSig2,destination,{from: badBoy})
+      } catch (error) {
+          assert.equal(error.message, 'VM Exception while processing transaction: revert Links::claim is not valid')
+      }
+    })
+    it('should NOT emit Claim event', () => {
+      assert.equal(tx, undefined)
+    })
+    it('should NOT emit correct claimed values', () => {
+      assert.equal(tx, undefined)
+    })
+    it('should NOT be a new fund',async () => {
+      const fund = await instance.funds(faultyId,{from: badBoy})
+      assert.equal(fund[0], 0) // sender == address(0)
+      const exists = await instance.fundExists(faultyId,{from: badBoy})
+      assert.equal(exists, false)
+    })
+    it('should NOT increase destination balance.',async () => {
+      finalBalance = await web3_1.eth.getBalance(destination)
+      assert.equal(initialBalance, finalBalance)
     })
   })
 })

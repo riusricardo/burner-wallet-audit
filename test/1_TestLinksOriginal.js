@@ -14,7 +14,6 @@ contract('LinksOriginal', function(accounts) {
   const value = 0.2*10**18;
   const user1 = accounts[0];
   const user2 = accounts[1];
-  const user3 = accounts[2];
   const badBoy = accounts[4];
   const signer1 = web3_1.eth.accounts.create(web3_1.utils.randomHex(32));
   const claimId1 = web3_1.utils.randomHex(32);
@@ -102,7 +101,7 @@ contract('LinksOriginal', function(accounts) {
       assert.equal(tx.logs[0].args.expires, block + 10)
     })
     it('should create fund with correct parameters',async () => {
-      const fund = await instance.funds(claimId2,{from: user3})
+      const fund = await instance.funds(claimId2,{from: user1})
       assert.equal(fund[0], user1) // msg.sender
       assert.equal(fund[1], signer1.address.toLowerCase()) // signer
       assert.equal(fund[2], value) // value
