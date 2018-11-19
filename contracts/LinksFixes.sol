@@ -6,7 +6,6 @@ contract LinksFixes {
         address sender;
         address signer;
         uint256 value;
-        uint64 expires;
         uint256 nonce;
         bool claimed;
     }
@@ -17,7 +16,6 @@ contract LinksFixes {
         bytes32 id,
         address indexed sender,
         uint256 value,
-        uint64 expires,
         uint256 nonce,
         bool indexed sent
     );
@@ -32,22 +30,20 @@ contract LinksFixes {
 
     /// @dev Create fund.
     /// @param _id Fund lookup key value.
-    /// @param _sig Claimant signature.
+    /// @param _signature Sender signature.
     function createFund(
         bytes32 _id, 
-        bytes _sig
+        bytes memory _signature
     )   
         public 
         payable 
         returns (bool)
     {
         require(msg.value > 0,"Links::some value needs to be allocated");
-        require(_sig.length == 65,"Links::invalid signature lenght");
+        require(_signature.length == 65,"Links::invalid signature lenght");
         //make sure there is not already a fund here
-        require(!fundExists(_id),"Links::send id already exists");
-        //create hardcoded expires time for now
-        uint64 expires = uint64(block.number+10);//expires in 100 blocks
-        address signer = recoverSigner(_id,_sig);
+        require(!isFundValid(_id),"Links::send id already exists");
+        address signer = recoverSigner(_id,_signature);
         //recoverSigner returns: address(0) if invalid signature or incorrect version.
         require(signer != address(0),"Links::invalid signer");
         uint256 nonce = contractNonce;
@@ -57,39 +53,38 @@ contract LinksFixes {
             sender: msg.sender,
             signer: signer,
             value: msg.value,
-            expires: expires,
             nonce: nonce,
             claimed: false
         });
         //send out events for frontend parsing
-        emit Send(_id,msg.sender,msg.value,expires,nonce,true);
+        emit Send(_id,msg.sender,msg.value,nonce,true);
         return true;
     }
 
     /// @dev Claim fund value.
     /// @param _id Claim lookup key value.
-    /// @param _sig Claimant signature.
+    /// @param _signature Sender signature.
     /// @param _destination Destination address.
     function claimFund(
         bytes32 _id, 
-        bytes _sig, 
+        bytes memory _signature, 
         address _destination
     ) 
         public 
         returns (bool)
     {
-        //makes sure sig is correct, there is fund here and it has not expired
-        require(isClaimValid(_id,_sig,_destination),"Links::claim is not valid");
+        //makes sure signature is correct and fund is valid.
+        require(isClaimValid(_id,_signature,_destination),"Links::claim is not valid");
         return executeClaim(_id,_destination);
     }
   
     /// @dev Off chain relayer can validate the claim before submitting.
     /// @param _id Claim lookup key value.
-    /// @param _sig Claimant signature.
+    /// @param _signature Sender signature.
     /// @param _destination Destination address.
     function isClaimValid(
         bytes32 _id, 
-        bytes _sig, 
+        bytes memory _signature, 
         address _destination
     ) 
         public 
@@ -97,18 +92,17 @@ contract LinksFixes {
         returns (bool)
     {
         // address(0) destination is valid
-        if(fundExists(_id) && _sig.length == 65){
+        if(isFundValid(_id) && _signature.length == 65){
             uint256 nonce = funds[_id].nonce;
             // keccak256(_id,_destination,nonce,address(this)) is a unique key
             // remains unique if the id gets reused after fund deletion
             bytes32 claimHash = keccak256(abi.encodePacked(_id,_destination,nonce,address(this)));
-            address signer = recoverSigner(claimHash,_sig);
+            address signer = recoverSigner(claimHash,_signature);
             if(signer != address(0)){
                 return(
                     funds[_id].signer == signer && 
                     funds[_id].claimed == false &&
-                    funds[_id].nonce < contractNonce &&
-                    funds[_id].expires >= uint64(block.number)
+                    funds[_id].nonce < contractNonce
                 );
             }else{
                 return false;
@@ -119,8 +113,8 @@ contract LinksFixes {
     }
 
     /// @dev Validate fund status. 
-    /// @param _id Lookup key value.
-    function fundExists(
+    /// @param _id Lookup key id.
+    function isFundValid(
         bytes32 _id
     ) 
         public 
@@ -131,7 +125,6 @@ contract LinksFixes {
         address signer = funds[_id].signer;
         uint256 amount = funds[_id].value;
         uint256 nonce = funds[_id].nonce;
-        uint64 expiration = funds[_id].expires;
         /* solium-disable-next-line security/no-inline-assembly */
         assembly {
           // Cannot assume empty initial values without initializating them. 
@@ -139,14 +132,13 @@ contract LinksFixes {
           signer := and(signer, 0xffffffff)
           amount := and(amount, 0xffffffff)
           nonce := and(nonce, 0xffffffff)
-          expiration := and(expiration, 0xffffffff)
         }
         return (
           sender != address(0) && 
           signer != address(0) && 
           amount != uint256(0) && 
           nonce != uint256(0) &&
-          expiration != uint64(0)
+          nonce < contractNonce
         );
     }
 
@@ -157,10 +149,10 @@ contract LinksFixes {
         bytes32 _id,
         address _destination
     ) 
-        internal 
+        private 
         returns (bool)
     {
-        require(fundExists(_id),"Links::fund id does not exists");
+        require(isFundValid(_id),"Links::fund is not valid");
         bool status = false;
         bool claimed = funds[_id].claimed;
         uint256 value = funds[_id].value;
@@ -189,9 +181,9 @@ contract LinksFixes {
     /// @param _signature message signature (65 bytes).
     function recoverSigner(
         bytes32 _hash, 
-        bytes _signature
+        bytes memory _signature
     ) 
-        internal 
+        private 
         pure 
         returns (address)
     {
@@ -231,7 +223,7 @@ contract LinksFixes {
         uint256 _a, 
         uint256 _b
     ) 
-        internal 
+        private 
         pure 
         returns (uint256 c) 
     {

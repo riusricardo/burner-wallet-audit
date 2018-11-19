@@ -39,7 +39,6 @@ contract('LinksFixes', function(accounts) {
       assert.equal(tx.logs[0].args.id, claimId1) // fund id
       assert.equal(tx.logs[0].args.sender, user1) // sender
       assert.equal(tx.logs[0].args.value, value) // value
-      assert.equal(tx.logs[0].args.expires, block + 10) // expires
       assert.equal(tx.logs[0].args.nonce, 1) // nonce
       assert.equal(tx.logs[0].args.sent, true) // sent
     })
@@ -48,9 +47,8 @@ contract('LinksFixes', function(accounts) {
       assert.equal(fund[0], user1) // msg.sender
       assert.equal(fund[1], signer1.address.toLowerCase()) // signer
       assert.equal(fund[2], value) // value
-      assert.equal(fund[3], block + 10) // expires
-      assert.equal(fund[4], 1) // nonce
-      assert.equal(fund[5], false) // claimed/status
+      assert.equal(fund[3], 1) // nonce
+      assert.equal(fund[4], false) // claimed/status
     })
   })
 
@@ -98,7 +96,6 @@ contract('LinksFixes', function(accounts) {
         signedMessage = web3_1.eth.accounts.sign(claimId2, signer1.privateKey)
         signature = signedMessage.signature
         tx = await instance.createFund(claimId2,signature,{from: user1, value:value})
-        block = await web3_1.eth.getBlockNumber()
     })
     it('should emit Send event', () => {
       assert.equal(tx.logs[0].event, 'Send')
@@ -107,7 +104,6 @@ contract('LinksFixes', function(accounts) {
       assert.equal(tx.logs[0].args.id, claimId2) // fund id
       assert.equal(tx.logs[0].args.sender, user1) // sender
       assert.equal(tx.logs[0].args.value, value) // value
-      assert.equal(tx.logs[0].args.expires, block + 10) // expires
       assert.equal(tx.logs[0].args.nonce, 2) // nonce
       assert.equal(tx.logs[0].args.sent, true) // sent
     })
@@ -116,9 +112,8 @@ contract('LinksFixes', function(accounts) {
       assert.equal(fund[0], user1) // msg.sender
       assert.equal(fund[1], signer1.address.toLowerCase()) // signer
       assert.equal(fund[2], value) // value
-      assert.equal(fund[3], block + 10) // expires
-      assert.equal(fund[4], 2) // nonce
-      assert.equal(fund[5], false) // claimed/status
+      assert.equal(fund[3], 2) // nonce
+      assert.equal(fund[4], false) // claimed/status
     })
   })
 
@@ -146,8 +141,6 @@ contract('LinksFixes', function(accounts) {
     it('should NOT be a new fund',async () => {
       const fund = await instance.funds(claimId2,{from: user2})
       assert.equal(fund[0], user1) // sender != address(0)
-      const exists = await instance.fundExists(claimId2,{from: user2})
-      assert.equal(exists, true)
     })
     it('should NOT increase destination balance.',async () => {
       finalBalance = await web3_1.eth.getBalance(destination)
@@ -180,8 +173,6 @@ contract('LinksFixes', function(accounts) {
     it('should NOT create fund with faulty parameters',async () => {
       const fund = await instance.funds(faultyId,{from: user2})
       assert.equal(fund[0], 0) // sender == address(0)
-      const exists = await instance.fundExists(faultyId,{from: user2})
-      assert.equal(exists, false)
     })
   })
 
@@ -210,8 +201,6 @@ contract('LinksFixes', function(accounts) {
     it('should NOT be a new fund',async () => {
       const fund = await instance.funds(faultyId,{from: badBoy})
       assert.equal(fund[0], 0) // sender == address(0)
-      const exists = await instance.fundExists(faultyId,{from: badBoy})
-      assert.equal(exists, false)
     })
     it('should NOT increase destination balance.',async () => {
       finalBalance = await web3_1.eth.getBalance(destination)
