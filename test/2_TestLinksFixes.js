@@ -154,8 +154,6 @@ contract('LinksFixes', function(accounts) {
         // Create new fund for another user.
         // Incorrect signature size or version creates signer 0x0
         fakeSig = web3_1.utils.randomHex(66) // sig should be 65 bytes
-
-        // create a correct signature to test address(0)
     })
     it('should FAIL to claim fund with incorrect signature lenght or version.', async () => {
       try {
