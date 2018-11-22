@@ -3,10 +3,14 @@ var web3_1 = new Web3_1()
 web3_1.setProvider(web3.currentProvider)
 
 var LinksFixes = artifacts.require("LinksFixes");
+var RevertContract = artifacts.require("RevertContract");
 
 //Hacks for web3@1.0 support in truffle tests.
 LinksFixes.currentProvider.sendAsync = function() {
   return LinksFixes.currentProvider.send.apply(LinksFixes.currentProvider, arguments);
+};
+RevertContract.currentProvider.sendAsync = function() {
+  return RevertContract.currentProvider.send.apply(RevertContract.currentProvider, arguments);
 };
 
 contract('LinksFixes', function(accounts) {
@@ -77,6 +81,7 @@ contract('LinksFixes', function(accounts) {
       assert.equal(tx.logs[0].args.sender, user2)
       assert.equal(tx.logs[0].args.value, value)
       assert.equal(tx.logs[0].args.receiver, destination)
+      assert.equal(tx.logs[0].args.claimed, true)
     })
     it('should delete fund',async () => {
       const fund = await instance.funds(claimId1,{from: user2})
@@ -203,6 +208,71 @@ contract('LinksFixes', function(accounts) {
     it('should NOT increase destination balance.',async () => {
       finalBalance = await web3_1.eth.getBalance(destination)
       assert.equal(initialBalance, finalBalance)
+    })
+  })
+
+  describe('7) Create new fund. signer1 -> user2.', () => {
+    let tx,signedMessage,signature
+    before(async () => {
+        signedMessage = web3_1.eth.accounts.sign(claimId1, signer1.privateKey)
+        signature = signedMessage.signature
+        tx = await instance.createFund(claimId1,signature,{from: user1, value:value})
+        block = await web3_1.eth.getBlockNumber()
+    })
+    it('should emit Send event', () => {
+      assert.equal(tx.logs[0].event, 'Send')
+    })
+    it('should emit correct sent values', () => {
+      assert.equal(tx.logs[0].args.id, claimId1) // fund id
+      assert.equal(tx.logs[0].args.sender, user1) // sender
+      assert.equal(tx.logs[0].args.value, value) // value
+      assert.equal(tx.logs[0].args.nonce, 3) // nonce
+      assert.equal(tx.logs[0].args.sent, true) // sent
+    })
+    it('should create fund with correct parameters',async () => {
+      const fund = await instance.funds(claimId1,{from: user1})
+      assert.equal(fund[0], user1) // msg.sender
+      assert.equal(fund[1], signer1.address.toLowerCase()) // signer
+      assert.equal(fund[2], value) // value
+      assert.equal(fund[3], 3) // nonce
+      assert.equal(fund[4], false) // claimed/status
+    })
+  })
+
+  describe('8) Claim fund and call honest contract while it reverts.', () => {
+    let tx,signedMessage,signature,destination,message,initialBalance,finalBalance,transaction
+    before(async () => {
+      destination = RevertContract.address
+      message = web3_1.utils.soliditySha3(
+        {type: 'uint256', value: claimId1}, // fund id
+        {type: 'address', value: destination}, // destination address
+        {type: 'uint256', value: 3}, // nonce
+        {type: 'address', value: LinksFixes.address} // contract address
+      )
+      signedMessage = web3_1.eth.accounts.sign(message, signer1.privateKey)
+      signature = signedMessage.signature
+      attackSig = signature; // Used in test case 4)
+      initialBalance = await web3_1.eth.getBalance(destination)
+      tx = await instance.claimFund(claimId1,signature,destination,{from: user2})
+      claimGas = tx.receipt.gasUsed;
+    })
+    it('should emit Claim event', () => {
+      assert.equal(tx.logs[0].event, 'Claim')
+    })
+    it('should emit correct values and status -> FALSE', () => {
+      assert.equal(tx.logs[0].args.id, claimId1)
+      assert.equal(tx.logs[0].args.sender, user2)
+      assert.equal(tx.logs[0].args.value, value)
+      assert.equal(tx.logs[0].args.receiver, destination)
+      assert.equal(tx.logs[0].args.claimed, false)
+    })
+    it('should NOT delete fund',async () => {
+      const fund = await instance.funds(claimId1,{from: user2})
+      assert.equal(fund[0], user1) // sender != address(0))
+    })
+    it('should NOT increment destination balance if honest contract reverts.',async () => {
+      finalBalance = await web3_1.eth.getBalance(destination)
+      assert.equal(0, finalBalance)
     })
   })
 })
