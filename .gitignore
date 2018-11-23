@@ -1,6 +1,13 @@
 # Truffle builds
 build/
 
+# Geth datadir
+.dev/datadir/geth
+
+# lock files
+package-lock\.json
+*.lock
+
 # Logs
 logs
 *.log
@@ -62,4 +69,3 @@ typings/
 
 # next.js build output
 .next
-

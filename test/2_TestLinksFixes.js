@@ -14,7 +14,7 @@ RevertContract.currentProvider.sendAsync = function() {
 };
 
 contract('LinksFixes', function(accounts) {
-  let instance,block,attackSig,claimGas
+  let instance,attackSig
   const value = 0.2*10**18;
   const user1 = accounts[0];
   const user2 = accounts[1];
@@ -57,7 +57,8 @@ contract('LinksFixes', function(accounts) {
   })
 
   describe('2) Claim fund value as user2.', () => {
-    let tx,signedMessage,signature,destination,message,initialBalance,finalBalance,transaction
+    let tx,signedMessage,signature,destination,message,finalBalance
+    let initial,final,gasPrice,transaction// used for gas measurement
     before(async () => {
         destination = accounts[9] // User2 destination address
         message = web3_1.utils.soliditySha3(
@@ -70,8 +71,18 @@ contract('LinksFixes', function(accounts) {
         signature = signedMessage.signature
         attackSig = signature; // Used in test case 4)
         initialBalance = await web3_1.eth.getBalance(destination)
+        initial = await web3_1.eth.getBalance(user2) // used for gas measurement
         tx = await instance.claimFund(claimId1,signature,destination,{from: user2})
-        claimGas = tx.receipt.gasUsed; // used as a general parameter.
+        // measure gas metrics
+        gasUsed = tx.receipt.gasUsed;
+        transaction = await web3_1.eth.getTransaction(tx.receipt.transactionHash);
+        gasPrice = transaction.gasPrice;
+        final = await web3_1.eth.getBalance(user2)
+        console.log("      ",
+          "Tx Cost: " + (gasUsed * gasPrice),
+          "Consumed: " + (initial-final),
+          "Refunded: " + ((initial-final)-(gasUsed * gasPrice))
+        )
     })
     it('should emit Claim event', () => {
       assert.equal(tx.logs[0].event, 'Claim')
@@ -240,7 +251,8 @@ contract('LinksFixes', function(accounts) {
   })
 
   describe('8) Claim fund and call honest contract while it reverts.', () => {
-    let tx,signedMessage,signature,destination,message,initialBalance,finalBalance,transaction
+    let tx,signedMessage,signature,destination,message,finalBalance
+    let initial,final,gasPrice,transaction// used for gas measurement
     before(async () => {
       destination = RevertContract.address
       message = web3_1.utils.soliditySha3(
@@ -253,8 +265,18 @@ contract('LinksFixes', function(accounts) {
       signature = signedMessage.signature
       attackSig = signature; // Used in test case 4)
       initialBalance = await web3_1.eth.getBalance(destination)
+      initial = await web3_1.eth.getBalance(user2) // used for gas measurement
       tx = await instance.claimFund(claimId1,signature,destination,{from: user2})
-      claimGas = tx.receipt.gasUsed;
+      // measure gas metrics
+      gasUsed = tx.receipt.gasUsed;
+      transaction = await web3_1.eth.getTransaction(tx.receipt.transactionHash);
+      gasPrice = transaction.gasPrice;
+      final = await web3_1.eth.getBalance(user2)
+      console.log("      ",
+        "Tx Cost: " + (gasUsed * gasPrice),
+        "Consumed: " + (initial-final),
+        "Refunded: " + ((initial-final)-(gasUsed * gasPrice))
+      )
     })
     it('should emit Claim event', () => {
       assert.equal(tx.logs[0].event, 'Claim')

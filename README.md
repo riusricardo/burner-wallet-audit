@@ -13,7 +13,7 @@ Here is the assessment and observations on possible improvements, in order of im
 ## High Severity
 * *Insecure call to external contracts* - Sending value to a destination address without limiting gas, creates the possibility to call another contract address and manipulate the execution flow.
 
-* *Gas Limit DoS on the Network via Block Stuffing* - The use of a time / blocks restriction limits the chances to claim a fund. The expiration of the funds can lock the value if a successful transaction can not enter the main network before the time / blocks limit.
+* *Gas Limit DoS on the Network via Block Stuffing* - The usage of a time / blocks restriction limits the chances to claim a fund. The expiration of the funds can lock the value if a successful transaction can not enter the main network before the time / blocks limit.
 This attack can be done on purpose to lock the fund by filling almost all the gas of the blocks and not letting any claim transaction to go on.
 
 ## Medium Severity

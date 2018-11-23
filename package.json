@@ -9,7 +9,7 @@
     "test": "test"
   },
   "scripts": {
-    "test": "truffle test"
+    "test": "truffle test",
   },
   "repository": {
     "type": "git",
