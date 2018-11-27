@@ -57,12 +57,12 @@ contract('LinksFixes', function(accounts) {
   })
 
   describe('2) Claim fund value as user2.', () => {
-    let tx,signedMessage,signature,destination,message,finalBalance
+    let tx,signedMessage,signature,destination,message,initialBalance
     let initial,final,gasPrice,transaction// used for gas measurement
     before(async () => {
         destination = accounts[9] // User2 destination address
         message = web3_1.utils.soliditySha3(
-          {type: 'uint256', value: claimId1}, // fund id
+          {type: 'bytes32', value: claimId1}, // fund id
           {type: 'address', value: destination}, // destination address
           {type: 'uint256', value: 1}, // nonce
           {type: 'address', value: LinksFixes.address} // contract address
@@ -81,7 +81,7 @@ contract('LinksFixes', function(accounts) {
         console.log("      ",
           "Tx Cost: " + (gasUsed * gasPrice),
           "Consumed: " + (initial-final),
-          "Refunded: " + ((initial-final)-(gasUsed * gasPrice))
+          "Refunded: " + ((gasUsed * gasPrice)-(initial-final))
         )
     })
     it('should emit Claim event', () => {
@@ -99,7 +99,7 @@ contract('LinksFixes', function(accounts) {
       assert.equal(fund[0], 0) //sender = address(0)
     })
     it('should increment destination balance by value',async () => {
-      finalBalance = await web3_1.eth.getBalance(destination)
+      const finalBalance = await web3_1.eth.getBalance(destination)
       const balance = web3_1.utils.toBN(initialBalance).add(web3_1.utils.toBN(value))
       assert.equal(balance, finalBalance)
     })
@@ -251,12 +251,12 @@ contract('LinksFixes', function(accounts) {
   })
 
   describe('8) Claim fund and call honest contract while it reverts.', () => {
-    let tx,signedMessage,signature,destination,message,finalBalance
+    let tx,signedMessage,signature,destination,message,initialBalance
     let initial,final,gasPrice,transaction// used for gas measurement
     before(async () => {
       destination = RevertContract.address
       message = web3_1.utils.soliditySha3(
-        {type: 'uint256', value: claimId1}, // fund id
+        {type: 'bytes32', value: claimId1}, // fund id
         {type: 'address', value: destination}, // destination address
         {type: 'uint256', value: 3}, // nonce
         {type: 'address', value: LinksFixes.address} // contract address
@@ -275,7 +275,7 @@ contract('LinksFixes', function(accounts) {
       console.log("      ",
         "Tx Cost: " + (gasUsed * gasPrice),
         "Consumed: " + (initial-final),
-        "Refunded: " + ((initial-final)-(gasUsed * gasPrice))
+        "Refunded: " + ((gasUsed * gasPrice)-(initial-final))
       )
     })
     it('should emit Claim event', () => {
@@ -293,7 +293,7 @@ contract('LinksFixes', function(accounts) {
       assert.equal(fund[0], user1) // sender != address(0))
     })
     it('should NOT increment destination balance if honest contract reverts.',async () => {
-      finalBalance = await web3_1.eth.getBalance(destination)
+      const finalBalance = await web3_1.eth.getBalance(destination)
       assert.equal(0, finalBalance)
     })
   })
