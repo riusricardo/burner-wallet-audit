@@ -21,10 +21,13 @@ function getProvider(rpcUrl) {
 
 
 module.exports = {
-  solc: {
-    optimizer: {
-      enabled: false,
-      runs: 200
+  compilers: {
+    solc: {
+      version: "0.4.25",
+      optimizer: {
+        enabled: false,
+        runs: 200
+      }
     }
   },
   networks: {
@@ -39,10 +42,10 @@ module.exports = {
       gas: 8000000,
       gasPrice: 1000000000
     },
-    geth_dev: { 
+    local_dev: { 
       host: "localhost",
       network_id: 1337,
-      port: 8545,
+      port: 9545,
       gas: 6283185, //geth --dev gas limit is 6283185
       gasPrice: 1000000000
     },
@@ -73,7 +76,7 @@ module.exports = {
       },
       gas: 8000000,
       gasPrice: 1000000000,
-      network_id: "*"
+      network_id: 77
     },
     poa: {
       get provider() {
@@ -81,7 +84,7 @@ module.exports = {
       },
       gas: 1704580,
       gasPrice: 1000000000,
-      network_id: "*"
+      network_id: 99
     },
     dai: {
       get provider() {
@@ -89,7 +92,7 @@ module.exports = {
       },
       gas: 1704580,
       gasPrice: 1000000000,
-      network_id: "*"
+      network_id: 100
     }
   }
 };

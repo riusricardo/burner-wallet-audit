@@ -1,6 +1,6 @@
-pragma solidity ^0.4.24;
+pragma solidity 0.4.25;
 
-contract LinksFixes {
+contract Links {
 
     struct Fund {
         address sender;
@@ -12,20 +12,20 @@ contract LinksFixes {
     uint256 public  contractNonce = 1;
     mapping (bytes32 => Fund) public funds;
 
-    event Send(
-        bytes32 id,
+    event Sent(
+        bytes32 indexed id,
         address indexed sender,
         uint256 value,
-        uint256 nonce,
-        bool indexed sent
+        uint256 indexed nonce,
+        bool sent
     );
-    event Claim(
-        bytes32 id,
-        address indexed sender, 
+    event Claimed(
+        bytes32 indexed id,
+        address sender, 
         uint256 value, 
         address indexed receiver, 
-        uint256 nonce, 
-        bool indexed claimed
+        uint256 indexed nonce, 
+        bool claimed
     );
 
     /// @dev Create fund.
@@ -39,15 +39,16 @@ contract LinksFixes {
         payable 
         returns (bool)
     {
-        require(msg.value > 0,"Links::some value needs to be allocated");
-        require(_signature.length == 65,"Links::invalid signature lenght");
+        require(msg.value > 0,"Links::send, it is necessary to send some value");
+        require(_signature.length == 65,"Links::send, invalid signature lenght");
         //make sure there is not already a fund here
-        require(!isFundValid(_id),"Links::send id already exists");
+        require(!isFundValid(_id),"Links::send, id already exists");
         address signer = recoverSigner(_id,_signature);
         //recoverSigner returns: address(0) if invalid signature or incorrect version.
-        require(signer != address(0),"Links::invalid signer");
+        require(signer != address(0),"Links::send, invalid signer");
         uint256 nonce = contractNonce;
         contractNonce = safeAdd(contractNonce,uint256(1));
+        assert(nonce < contractNonce);
         //create fund
         funds[_id] = Fund({
             sender: msg.sender,
@@ -57,7 +58,7 @@ contract LinksFixes {
             claimed: false
         });
         //send out events for frontend parsing
-        emit Send(_id,msg.sender,msg.value,nonce,true);
+        emit Sent(_id,msg.sender,msg.value,nonce,true);
         return true;
     }
 
@@ -68,13 +69,14 @@ contract LinksFixes {
     function claimFund(
         bytes32 _id, 
         bytes memory _signature, 
+        bytes32 _claimHash, 
         address _destination
     ) 
         public 
         returns (bool)
     {
         //makes sure signature is correct and fund is valid.
-        require(isClaimValid(_id,_signature,_destination),"Links::claim is not valid");
+        require(isClaimValid(_id,_signature,_claimHash,_destination),"Links::claim, claim is not valid");
         return executeClaim(_id,_destination);
     }
   
@@ -84,7 +86,8 @@ contract LinksFixes {
     /// @param _destination Destination address.
     function isClaimValid(
         bytes32 _id, 
-        bytes memory _signature, 
+        bytes memory _signature,
+        bytes32 _claimHash, 
         address _destination
     ) 
         public 
@@ -93,21 +96,24 @@ contract LinksFixes {
     {
         // address(0) destination is valid
         if(isFundValid(_id) && _signature.length == 65){
+            address signer = address(0);
             uint256 nonce = funds[_id].nonce;
             // keccak256(_id,_destination,nonce,address(this)) is a unique key
             // remains unique if the id gets reused after fund deletion
-            bytes32 claimHash = keccak256(abi.encodePacked(_id,_destination,nonce,address(this)));
-            address signer = recoverSigner(claimHash,_signature);
+            bytes32 claimHash1 = keccak256(abi.encodePacked(_id,_destination,nonce,address(this)));
+            if(_claimHash == claimHash1){
+                signer = recoverSigner(claimHash1,_signature);
+            } else{
+                return false;
+            } 
             if(signer != address(0)){
                 return(
-                    funds[_id].signer == signer && 
-                    funds[_id].claimed == false &&
-                    funds[_id].nonce < contractNonce
+                    funds[_id].signer == signer && funds[_id].claimed == false 
                 );
-            }else{
+            } else{
                 return false;
             }
-        }else{
+        } else{
             return false;
         }
     }
@@ -123,21 +129,21 @@ contract LinksFixes {
     {
         address sender = funds[_id].sender;
         address signer = funds[_id].signer;
-        uint256 amount = funds[_id].value;
+        uint256 value = funds[_id].value;
         uint256 nonce = funds[_id].nonce;
         /* solium-disable-next-line security/no-inline-assembly */
         assembly {
           // Cannot assume empty initial values without initializating them. 
           sender := and(sender, 0xffffffff)
           signer := and(signer, 0xffffffff)
-          amount := and(amount, 0xffffffff)
+          value := and(value, 0xffffffff)
           nonce := and(nonce, 0xffffffff)
         }
         return (
           sender != address(0) && 
           signer != address(0) && 
-          amount != uint256(0) && 
-          nonce != uint256(0) &&
+          value > uint256(0) && 
+          nonce > uint256(0) &&
           nonce < contractNonce
         );
     }
@@ -152,12 +158,14 @@ contract LinksFixes {
         private 
         returns (bool)
     {
-        require(isFundValid(_id),"Links::fund is not valid");
+        require(isFundValid(_id),"Links::executeClaim, fund is not valid");
         bool status = false;
         bool claimed = funds[_id].claimed;
         uint256 value = funds[_id].value;
         uint256 nonce = funds[_id].nonce;
-        if((claimed == false) && (nonce < contractNonce)){
+
+        assert(nonce < contractNonce);
+        if(claimed == false){
             // set id control flag to prevent reentrancy
             // temporary fund invalidation
             funds[_id].claimed = true;
@@ -168,11 +176,11 @@ contract LinksFixes {
             funds[_id].claimed = status;
         } 
         if(status == true || claimed == true){
-            // DESTROY object so it can't be claimed again
+            // DESTROY object so it can't be claimed again and free storage space.
             delete funds[_id];
         }
         // send out events for frontend parsing
-        emit Claim(_id,msg.sender,value,_destination,nonce,status);
+        emit Claimed(_id,msg.sender,value,_destination,nonce,status);
         return status;
     }
 
